@@ -27,6 +27,9 @@ const api = {
   },
   sendCanvasToClipboard(dataUrl: string) {
     ipcRenderer.invoke('canvas-to-clipboard', dataUrl);
+  },
+  setWindowContentSize(width: number, height: number) {
+    ipcRenderer.invoke('set-window-content-size', { width, height });
   }
 };
 

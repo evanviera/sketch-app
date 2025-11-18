@@ -17,6 +17,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: initialWidth,
     height: initialHeight,
+    backgroundColor: '#2b2b2b',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -182,6 +183,15 @@ ipcMain.handle('canvas-to-clipboard', (_event, dataUrl: string) => {
   } catch (err) {
     console.error('Failed to write canvas to clipboard:', err);
   }
+});
+
+ipcMain.handle('set-window-content-size', (_event, size: { width: number; height: number }) => {
+  if (!mainWindow) return;
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const max = primaryDisplay.workAreaSize;
+  const targetWidth = Math.min(size.width, max.width);
+  const targetHeight = Math.min(size.height, max.height);
+  mainWindow.setContentSize(targetWidth, targetHeight);
 });
 
 app.on('ready', () => {

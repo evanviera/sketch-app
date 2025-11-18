@@ -3,6 +3,7 @@ type NewDocumentPayload =
   | { mode: 'fromClipboard'; width: number; height: number; imageDataUrl: string };
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+const canvasContainer = document.getElementById('canvas-container') as HTMLDivElement;
 const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
 
 let currentColor = '#ff0000';
@@ -14,16 +15,23 @@ let hasMoved = false;
 let points: { x: number; y: number }[] = [];
 let docWidth = 0;
 let docHeight = 0;
+let resizeTimeoutId: number | null = null;
+
+type CanvasSnapshot = {
+  imageData: ImageData;
+  width: number;
+  height: number;
+};
 
 const UNDO_LIMIT = 8;
-let undoStack: ImageData[] = [];
-let redoStack: ImageData[] = [];
-let strokeStartSnapshot: ImageData | null = null;
+let undoStack: CanvasSnapshot[] = [];
+let redoStack: CanvasSnapshot[] = [];
+let strokeStartState: CanvasSnapshot | null = null;
 
 function resetHistory() {
   undoStack = [];
   redoStack = [];
-  strokeStartSnapshot = null;
+  strokeStartState = null;
 }
 
 function captureSnapshot(): ImageData | null {
@@ -44,6 +52,41 @@ function restoreSnapshot(snapshot: ImageData) {
   ctx.restore();
 }
 
+function captureCanvasState(): CanvasSnapshot | null {
+  const imageData = captureSnapshot();
+  if (!imageData) {
+    return null;
+  }
+  return {
+    imageData,
+    width: docWidth,
+    height: docHeight
+  };
+}
+
+function restoreCanvasState(state: CanvasSnapshot) {
+  docWidth = state.width;
+  docHeight = state.height;
+
+  const dpr = window.devicePixelRatio || 1;
+  const backingWidth = Math.max(1, Math.round(docWidth * dpr));
+  const backingHeight = Math.max(1, Math.round(docHeight * dpr));
+
+  canvas.width = backingWidth;
+  canvas.height = backingHeight;
+  canvas.style.width = `${docWidth}px`;
+  canvas.style.height = `${docHeight}px`;
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.scale(dpr, dpr);
+
+  restoreSnapshot(state.imageData);
+
+  // Also resize the window content so the viewport matches the document size.
+  const toolbarHeight = 48;
+  window.sketchAPI.setWindowContentSize(docWidth, docHeight + toolbarHeight);
+}
+
 function setupCanvasSize(width: number, height: number) {
   docWidth = width;
   docHeight = height;
@@ -60,6 +103,50 @@ function setupCanvasSize(width: number, height: number) {
 
   ctx.clearRect(0, 0, width, height);
   resetHistory();
+}
+
+function resizeCanvasPreservingContent(newWidth: number, newHeight: number) {
+  if (!newWidth || !newHeight) {
+    return;
+  }
+
+  if (newWidth === docWidth && newHeight === docHeight) {
+    return;
+  }
+
+  const prevState = captureCanvasState();
+  const snapshot = prevState?.imageData;
+
+  if (!prevState || !snapshot) {
+    return;
+  }
+
+  docWidth = newWidth;
+  docHeight = newHeight;
+
+  const dpr = window.devicePixelRatio || 1;
+  const backingWidth = Math.max(1, Math.round(docWidth * dpr));
+  const backingHeight = Math.max(1, Math.round(docHeight * dpr));
+
+  canvas.width = backingWidth;
+  canvas.height = backingHeight;
+  canvas.style.width = `${docWidth}px`;
+  canvas.style.height = `${docHeight}px`;
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.scale(dpr, dpr);
+
+  // Paint previous image data back at the origin. If the new canvas is smaller,
+  // content is cropped; if larger, the extra area is blank.
+  restoreSnapshot(snapshot);
+
+  // Record the resize as an undoable operation.
+  undoStack.push(prevState);
+  if (undoStack.length > UNDO_LIMIT) {
+    undoStack.shift();
+  }
+  redoStack = [];
+  strokeStartState = null;
 }
 
 function handleNewDocument(payload: NewDocumentPayload) {
@@ -82,7 +169,7 @@ function startDrawing(event: PointerEvent) {
   lastY = event.clientY - rect.top;
   hasMoved = false;
   points = [{ x: lastX, y: lastY }];
-  strokeStartSnapshot = captureSnapshot();
+  strokeStartState = captureCanvasState();
   // Starting a new stroke invalidates redo history.
   redoStack = [];
 
@@ -153,12 +240,12 @@ function stopDrawing() {
     ctx.fill();
   }
 
-  if (strokeStartSnapshot) {
-    undoStack.push(strokeStartSnapshot);
+  if (strokeStartState) {
+    undoStack.push(strokeStartState);
     if (undoStack.length > UNDO_LIMIT) {
       undoStack.shift();
     }
-    strokeStartSnapshot = null;
+    strokeStartState = null;
   }
 
   isDrawing = false;
@@ -169,26 +256,26 @@ function undo() {
   if (!undoStack.length) {
     return;
   }
-  const current = captureSnapshot();
+  const current = captureCanvasState();
   if (!current) {
     return;
   }
-  const snapshot = undoStack.pop()!;
+  const prevState = undoStack.pop()!;
   redoStack.push(current);
-  restoreSnapshot(snapshot);
+  restoreCanvasState(prevState);
 }
 
 function redo() {
   if (!redoStack.length) {
     return;
   }
-  const current = captureSnapshot();
+  const current = captureCanvasState();
   if (!current) {
     return;
   }
-  const snapshot = redoStack.pop()!;
+  const nextState = redoStack.pop()!;
   undoStack.push(current);
-  restoreSnapshot(snapshot);
+  restoreCanvasState(nextState);
 }
 
 function wireBrushSizeButtons() {
@@ -261,11 +348,33 @@ function setupClipboardIntegration() {
   });
 }
 
+function setupResizeHandling() {
+  window.addEventListener('resize', () => {
+    if (!docWidth || !docHeight) {
+      return;
+    }
+    const rect = canvasContainer.getBoundingClientRect();
+    const newWidth = Math.max(1, Math.round(rect.width));
+    const newHeight = Math.max(1, Math.round(rect.height));
+
+    // Debounce resize so we only commit one destructive resize per drag,
+    // instead of many tiny steps that would spam the undo history.
+    if (resizeTimeoutId !== null) {
+      window.clearTimeout(resizeTimeoutId);
+    }
+    resizeTimeoutId = window.setTimeout(() => {
+      resizeTimeoutId = null;
+      resizeCanvasPreservingContent(newWidth, newHeight);
+    }, 150);
+  });
+}
+
 function init() {
   wireBrushSizeButtons();
   wireColorButtons();
   setupPointerEvents();
   setupClipboardIntegration();
+  setupResizeHandling();
 
   window.addEventListener('contextmenu', (event) => {
     event.preventDefault();

@@ -10,6 +10,7 @@ interface SketchAPI {
   onUndoRequest(callback: () => void): void;
   onRedoRequest(callback: () => void): void;
   sendCanvasToClipboard(dataUrl: string): void;
+   setWindowContentSize(width: number, height: number): void;
 }
 
 declare global {
