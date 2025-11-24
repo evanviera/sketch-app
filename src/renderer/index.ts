@@ -16,6 +16,12 @@ let points: { x: number; y: number }[] = [];
 let docWidth = 0;
 let docHeight = 0;
 let resizeTimeoutId: number | null = null;
+let isLineConstrained = false;
+let lineAnchor: { x: number; y: number } = { x: 0, y: 0 };
+let linePreviewBase: ImageData | null = null;
+let linePreviewActive = false;
+let lastMidX = 0;
+let lastMidY = 0;
 
 type CanvasSnapshot = {
   imageData: ImageData;
@@ -85,6 +91,24 @@ function restoreCanvasState(state: CanvasSnapshot) {
   // Also resize the window content so the viewport matches the document size.
   const toolbarHeight = 48;
   window.sketchAPI.setWindowContentSize(docWidth, docHeight + toolbarHeight);
+}
+
+function getConstrainedPoint(anchor: { x: number; y: number }, x: number, y: number) {
+  const dx = x - anchor.x;
+  const dy = y - anchor.y;
+  if (dx === 0 && dy === 0) {
+    return { x: anchor.x, y: anchor.y };
+  }
+
+  const angle = Math.atan2(dy, dx);
+  const snapStep = Math.PI / 4; // 45°
+  const snappedAngle = Math.round(angle / snapStep) * snapStep;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  return {
+    x: anchor.x + Math.cos(snappedAngle) * distance,
+    y: anchor.y + Math.sin(snappedAngle) * distance
+  };
 }
 
 function setupCanvasSize(width: number, height: number) {
@@ -172,6 +196,12 @@ function startDrawing(event: PointerEvent) {
   strokeStartState = captureCanvasState();
   // Starting a new stroke invalidates redo history.
   redoStack = [];
+  lineAnchor = { x: lastX, y: lastY };
+  isLineConstrained = event.shiftKey;
+  linePreviewBase = null;
+  linePreviewActive = false;
+  lastMidX = lastX;
+  lastMidY = lastY;
 
   ctx.strokeStyle = currentColor;
   ctx.lineWidth = currentBrushSize;
@@ -192,6 +222,59 @@ function continueDrawing(event: PointerEvent) {
   const x = event.clientX - rect.left;
   const y = event.clientY - rect.top;
 
+  const shiftKeyActive = event.shiftKey;
+
+  if (shiftKeyActive) {
+    if (!linePreviewActive) {
+      lineAnchor = { x: lastX, y: lastY };
+      const previewSnapshot = captureSnapshot();
+      if (previewSnapshot) {
+        linePreviewBase = previewSnapshot;
+        linePreviewActive = true;
+      }
+    }
+
+    if (linePreviewBase) {
+      restoreSnapshot(linePreviewBase);
+    }
+
+    const constrainedPoint = getConstrainedPoint(lineAnchor, x, y);
+    const dxLine = constrainedPoint.x - lineAnchor.x;
+    const dyLine = constrainedPoint.y - lineAnchor.y;
+    const lineDistance = Math.sqrt(dxLine * dxLine + dyLine * dyLine);
+    if (lineDistance >= 0.25) {
+      ctx.strokeStyle = currentColor;
+      ctx.lineWidth = currentBrushSize;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.globalAlpha = 1.0;
+
+      ctx.beginPath();
+      ctx.moveTo(lineAnchor.x, lineAnchor.y);
+      ctx.lineTo(constrainedPoint.x, constrainedPoint.y);
+      ctx.stroke();
+
+      lastX = constrainedPoint.x;
+      lastY = constrainedPoint.y;
+      lastMidX = lastX;
+      lastMidY = lastY;
+      points = [{ x: lineAnchor.x, y: lineAnchor.y }, { x: lastX, y: lastY }];
+      hasMoved = true;
+    }
+
+    isLineConstrained = true;
+    return;
+  }
+
+  if (linePreviewActive) {
+    linePreviewActive = false;
+    linePreviewBase = null;
+    isLineConstrained = false;
+    points = [{ x: lastX, y: lastY }];
+    lastMidX = lastX;
+    lastMidY = lastY;
+  }
+
   const dx = x - lastX;
   const dy = y - lastY;
   const distance = Math.sqrt(dx * dx + dy * dy);
@@ -203,24 +286,22 @@ function continueDrawing(event: PointerEvent) {
 
   points.push({ x, y });
 
-  if (points.length === 2) {
-    // First segment: simple line.
-    const p0 = points[0];
-    const p1 = points[1];
-    const midX = (p0.x + p1.x) / 2;
-    const midY = (p0.y + p1.y) / 2;
-    ctx.quadraticCurveTo(p0.x, p0.y, midX, midY);
-    ctx.stroke();
-  } else if (points.length > 2) {
-    // Subsequent segments: smooth using last two points.
-    const p1 = points[points.length - 2];
-    const p2 = points[points.length - 1];
-    const midX = (p1.x + p2.x) / 2;
-    const midY = (p1.y + p2.y) / 2;
-    ctx.quadraticCurveTo(p1.x, p1.y, midX, midY);
-    ctx.stroke();
-  }
+  ctx.strokeStyle = currentColor;
+  ctx.lineWidth = currentBrushSize;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.globalAlpha = 1.0;
 
+  const midX = (lastX + x) / 2;
+  const midY = (lastY + y) / 2;
+
+  ctx.beginPath();
+  ctx.moveTo(lastMidX, lastMidY);
+  ctx.quadraticCurveTo(lastX, lastY, midX, midY);
+  ctx.stroke();
+
+  lastMidX = midX;
+  lastMidY = midY;
   lastX = x;
   lastY = y;
   hasMoved = true;
@@ -250,6 +331,9 @@ function stopDrawing() {
 
   isDrawing = false;
   points = [];
+  linePreviewActive = false;
+  linePreviewBase = null;
+  isLineConstrained = false;
 }
 
 function undo() {
