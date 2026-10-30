@@ -1,38 +1,28 @@
 {
   "name": "snapback",
-  "version": "0.1.0",
-  "description": "Snapback – a minimal macOS screenshot annotator built with Electron",
-  "main": "dist/main.js",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Fast, local image feedback for artists. Built with Tauri and Rust.",
   "scripts": {
-    "build": "tsc && mkdir -p dist/renderer && cp src/renderer/index.html dist/renderer/index.html && cp src/renderer/styles.css dist/renderer/styles.css && cp src/renderer/icon.svg dist/renderer/icon.svg",
-    "start": "npm run build && electron .",
-    "dist": "npm run build && electron-builder"
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "start": "tauri dev",
+    "dist": "tauri build",
+    "test": "vitest run tests/model.test.ts",
+    "test:e2e": "playwright test",
+    "tauri": "tauri"
   },
-  "author": "",
-  "license": "MIT",
-  "dependencies": {},
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0"
+  },
   "devDependencies": {
-    "electron": "^39.2.1",
-    "@types/electron": "^1.6.10",
-    "@types/node": "^20.0.0",
-    "electron-builder": "^24.0.0",
-    "typescript": "^5.4.0"
-  },
-  "build": {
-    "appId": "com.example.snapback",
-    "productName": "Snapback",
-    "files": [
-      "dist/**/*",
-      "node_modules/**/*",
-      "package.json"
-    ],
-    "mac": {
-      "icon": "build/icon.png",
-      "target": [
-        "dmg",
-        "dir"
-      ],
-      "category": "public.app-category.graphics-design"
-    }
+    "@playwright/test": "^1.56.0",
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0",
+    "vitest": "^5.0.5"
   }
 }

@@ -1,0 +1,352 @@
+import { test, expect, type Page } from '@playwright/test';
+async function image(page: Page, width = 1000, height = 700) {
+  const buffer = await page.evaluate(({ width, height }) => {
+    const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext('2d')!; ctx.fillStyle = '#dae5dc'; ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = '#597565'; ctx.fillRect(200, 150, 250, 300);
+    return canvas.toDataURL('image/png').split(',')[1];
+  }, { width, height });
+  await page.locator('#file-input').setInputFiles({ name: 'artist-review.png', mimeType: 'image/png', buffer: Buffer.from(buffer, 'base64') });
+  await expect(page.locator('#stage')).toBeVisible();
+}
+async function draw(page: Page, tool = 'Arrow') {
+  await page.getByRole('button', { name: tool, exact: true }).click();
+  const box = (await page.locator('#stage').boundingBox())!;
+  await page.mouse.move(box.x + box.width * .25, box.y + box.height * .3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * .6, box.y + box.height * .6, { steps: 20 });
+  await page.mouse.up();
+}
+test.beforeEach(async ({ page }) => { await page.goto('/'); await expect(page.locator('#empty-open')).toBeEnabled(); });
+test('opens, draws, undoes, redoes and preserves source size on resize', async ({ page }) => {
+  await image(page); await draw(page);
+  await expect(page.locator('#annotation-count')).toHaveText('1 annotation');
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.locator('#annotation-count')).toHaveText('0 annotations');
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await expect(page.locator('#annotation-count')).toHaveText('1 annotation');
+  await page.setViewportSize({ width: 950, height: 650 });
+  await expect(page.locator('#image-info')).toHaveText('1,000 × 700 px');
+  expect(await page.locator('#source').evaluate((img: HTMLImageElement) => [img.naturalWidth, img.naturalHeight])).toEqual([1000, 700]);
+});
+test('pins feedback safely, deletes it and restores it with undo', async ({ page }) => {
+  await image(page); await page.getByRole('button', { name: 'Feedback pin', exact: true }).click();
+  await page.locator('#stage').click({ position: { x: 100, y: 100 } });
+  await page.locator('#annotation-text').fill('Push the silhouette. <img src=x onerror=alert(1)>');
+  await page.getByRole('button', { name: 'Add to image' }).click();
+  await expect(page.locator('.note p')).toHaveText('Push the silhouette. <img src=x onerror=alert(1)>');
+  await expect(page.locator('.note img')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Delete note 1' }).click();
+  await expect(page.locator('#note-count')).toHaveText('0');
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.locator('#note-count')).toHaveText('1');
+});
+test('restores an editable local draft after reload', async ({ page }) => {
+  await image(page); await draw(page, 'Pen');
+  await expect(page.locator('#save-state')).toHaveText('Saved locally');
+  await page.reload();
+  await expect(page.locator('#stage')).toBeVisible();
+  await expect(page.locator('#annotation-count')).toHaveText('1 annotation');
+  await draw(page, 'Rectangle');
+  await expect(page.locator('#annotation-count')).toHaveText('2 annotations');
+});
+test('exports full-size PNG with annotations even while original is shown', async ({ page }) => {
+  await image(page); await draw(page);
+  await page.keyboard.down('o');
+  await expect(page.locator('#annotations')).toHaveCSS('visibility', 'hidden');
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export PNG' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('artist-review-feedback.png');
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = []; for await (const chunk of stream!) chunks.push(chunk);
+  const bytes = Buffer.concat(chunks);
+  expect(bytes.readUInt32BE(16)).toBe(1000); expect(bytes.readUInt32BE(20)).toBe(700);
+  const hasCoral = await page.evaluate(async base64 => {
+    const img = new Image(); img.src = `data:image/png;base64,${base64}`; await img.decode();
+    const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height;
+    const ctx = canvas.getContext('2d')!; ctx.drawImage(img, 0, 0);
+    const { data } = ctx.getImageData(0, 0, img.width, img.height);
+    for (let i = 0; i < data.length; i += 4) if (data[i] > 240 && data[i + 1] > 90 && data[i + 1] < 140 && data[i + 2] < 110) return true;
+    return false;
+  }, bytes.toString('base64'));
+  expect(hasCoral).toBe(true); await page.keyboard.up('o');
+});
+test('asks before replacing feedback and preserves it on cancel', async ({ page }) => {
+  await image(page); await draw(page);
+  // Reuse a valid image generated by the browser instead of relying on image fixture decoders.
+  const data = await page.locator('#source').evaluate(async (img: HTMLImageElement) => Array.from(new Uint8Array(await (await fetch(img.src)).arrayBuffer())));
+  await page.locator('#file-input').setInputFiles({ name: 'replacement.png', mimeType: 'image/png', buffer: Buffer.from(data) });
+  await expect(page.locator('#replace-dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Keep reviewing' }).click();
+  await expect(page.locator('#annotation-count')).toHaveText('1 annotation');
+  await expect(page.locator('#filename')).toHaveText('artist-review.png');
+});
+test('rejects invalid files without losing the current review', async ({ page }) => {
+  await image(page); await draw(page);
+  await page.locator('#file-input').setInputFiles({ name: 'bad.png', mimeType: 'image/png', buffer: Buffer.from('invalid') });
+  await expect(page.getByRole('status')).toContainText('Could not open');
+  await expect(page.locator('#annotation-count')).toHaveText('1 annotation');
+});
+test('cancels unfinished strokes and supports pixel inspection', async ({ page }) => {
+  await image(page);
+  const box = (await page.locator('#stage').boundingBox())!;
+  await page.mouse.move(box.x + 100, box.y + 100); await page.mouse.down();
+  await page.mouse.move(box.x + 200, box.y + 180); await page.keyboard.press('Escape'); await page.mouse.up();
+  await expect(page.locator('#annotation-count')).toHaveText('0 annotations');
+  await page.keyboard.press('1'); await expect(page.locator('#zoom-value')).toHaveText('100%');
+  for (let i = 0; i < 4; i++) await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await expect(page.locator('#source')).toHaveCSS('image-rendering', 'pixelated');
+  await page.keyboard.press('0'); await expect(page.locator('#source')).toHaveCSS('image-rendering', 'auto');
+});
+
+async function addNote(page: Page, text: string, x = 120, y = 120) {
+  await page.getByRole('button', { name: 'Feedback pin', exact: true }).click();
+  await page.locator('#stage').click({ position: { x, y } });
+  await page.locator('#annotation-text').fill(text);
+  await page.getByRole('button', { name: 'Add to image' }).click();
+  await expect(page.locator('#text-dialog')).not.toBeVisible();
+}
+async function draftAnnotations(page: Page) {
+  await expect(page.locator('#save-state')).toHaveText('Saved locally');
+  return page.evaluate(async () => {
+    const request = indexedDB.open('snapback', 1);
+    const db = await new Promise<IDBDatabase>(resolve => request.onsuccess = () => resolve(request.result));
+    const read = db.transaction('drafts').objectStore('drafts').get('current');
+    const draft = await new Promise<{ annotations: import('../../src/model').Annotation[] }>(resolve => read.onsuccess = () => resolve(read.result));
+    db.close(); return draft.annotations;
+  });
+}
+async function draftPins(page: Page) { return (await draftAnnotations(page)).filter(item => item.type === 'pin'); }
+test('selects the topmost mixed annotation, deletes with either key, and never draws on blank clicks', async ({ page }) => {
+  await image(page); await draw(page, 'Arrow'); await draw(page, 'Rectangle');
+  const original = await draftAnnotations(page);
+  await page.keyboard.press('v');
+  const stage = (await page.locator('#stage').boundingBox())!;
+  await page.locator('#stage').click({ position: { x: stage.width * .42, y: stage.height * .45 } });
+  await expect(page.locator('#object-kind')).toHaveText('BOX');
+  await page.keyboard.press('Delete');
+  expect(await draftAnnotations(page)).toEqual([original[0]]);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  expect(await draftAnnotations(page)).toEqual(original);
+  await page.locator('#stage').click({ position: { x: stage.width * .42, y: stage.height * .45 } });
+  await page.keyboard.press('Backspace');
+  expect(await draftAnnotations(page)).toEqual([original[0]]);
+  await page.locator('#stage').click({ position: { x: stage.width * .425, y: stage.height * .45 } });
+  await expect(page.locator('#object-kind')).toHaveText('ARROW');
+  await page.getByRole('button', { name: 'Delete annotation', exact: false }).filter({ visible: true }).click();
+  expect(await draftAnnotations(page)).toHaveLength(0);
+  await page.locator('#stage').click({ position: { x: 40, y: 40 } });
+  await expect(page.locator('#object-selection')).toBeHidden();
+  expect(await draftAnnotations(page)).toHaveLength(0);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  expect(await draftAnnotations(page)).toEqual([original[0]]);
+});
+test('selects and resizes a pen dot and ignores Delete while editing feedback text', async ({ page }) => {
+  await image(page);
+  await page.locator('#stage').click({ position: { x: 100, y: 100 } });
+  await page.keyboard.press('v');
+  await page.locator('#stage').click({ position: { x: 100, y: 100 } });
+  await expect(page.locator('#object-kind')).toHaveText('PEN');
+  const handle = (await page.getByRole('button', { name: 'Resize bottom right', exact: true }).boundingBox())!;
+  await page.mouse.move(handle.x + 6, handle.y + 6); await page.mouse.down();
+  await page.mouse.move(handle.x + 30, handle.y + 30); await page.mouse.up();
+  expect((await draftAnnotations(page))[0].size).toBeGreaterThan(4);
+  await addNote(page, 'Keep this note', 250, 200);
+  await page.keyboard.press('v');
+  await page.getByRole('button', { name: 'Edit note 1', exact: true }).click();
+  await page.locator('#annotation-text').press('End');
+  await page.locator('#annotation-text').press('Backspace');
+  await expect(page.locator('#annotation-text')).toHaveValue('Keep this not');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  expect(await draftAnnotations(page)).toHaveLength(2);
+});
+for (const tool of ['Arrow', 'Rectangle', 'Text', 'Pen', 'Highlight']) {
+  test(`selects, moves and resizes ${tool.toLowerCase()} with undo and draft recovery`, async ({ page }) => {
+    await image(page);
+    if (tool === 'Text') {
+      await page.getByRole('button', { name: 'Text', exact: true }).click();
+      await page.locator('#stage').click({ position: { x: 130, y: 110 } });
+      await page.locator('#annotation-text').fill('Lift the contrast.\nKeep this detail.');
+      await page.getByRole('button', { name: 'Add to image' }).click();
+    } else await draw(page, tool);
+    await page.getByRole('button', { name: 'Select', exact: true }).click();
+    const original = (await draftAnnotations(page))[0];
+    const box = (await page.locator('#stage').boundingBox())!, scale = box.width / 1000;
+    const a = original.points[0], b = original.points.at(-1)!;
+    const start = tool === 'Text' ? { x: a.x + 12, y: a.y + 12 } : { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    await page.mouse.move(box.x + start.x * scale, box.y + start.y * scale); await page.mouse.down();
+    await page.mouse.move(box.x + start.x * scale + 55, box.y + start.y * scale + 35, { steps: 10 }); await page.mouse.up();
+    const moved = (await draftAnnotations(page))[0];
+    expect(moved.points[0].x).toBeCloseTo(a.x + 55 / scale, 0);
+    expect(moved.points[0].y).toBeCloseTo(a.y + 35 / scale, 0);
+    const handle = (await page.getByRole('button', { name: tool === 'Arrow' ? 'Resize arrow end' : 'Resize bottom right', exact: true }).boundingBox())!;
+    await page.mouse.move(handle.x + 6, handle.y + 6); await page.mouse.down();
+    await page.mouse.move(handle.x + 46, handle.y + 36, { steps: 10 }); await page.mouse.up();
+    const resized = (await draftAnnotations(page))[0];
+    expect(await draftAnnotations(page)).toHaveLength(1);
+    if (tool === 'Text') expect(resized.fontSize).toBeGreaterThan(20);
+    else if (tool === 'Pen' || tool === 'Highlight') {
+      expect(resized.points.length).toBe(moved.points.length);
+      expect(resized.points.at(-1)!.x - resized.points[0].x).toBeGreaterThan(moved.points.at(-1)!.x - moved.points[0].x);
+    } else {
+      expect(resized.points[0]).toEqual(moved.points[0]);
+      expect(resized.points[1].x).toBeCloseTo(moved.points[1].x + 40 / scale, 0);
+    }
+    const cancelHandle = (await page.getByRole('button', { name: tool === 'Arrow' ? 'Resize arrow end' : 'Resize bottom right', exact: true }).boundingBox())!;
+    await page.mouse.move(cancelHandle.x + 6, cancelHandle.y + 6); await page.mouse.down();
+    await page.mouse.move(cancelHandle.x + 60, cancelHandle.y + 30); await page.keyboard.press('Escape'); await page.mouse.up();
+    expect((await draftAnnotations(page))[0]).toEqual(resized);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    expect((await draftAnnotations(page))[0]).toEqual(moved);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    expect((await draftAnnotations(page))[0]).toEqual(original);
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    expect((await draftAnnotations(page))[0]).toEqual(resized);
+    await page.reload(); await expect(page.locator('#stage')).toBeVisible();
+    expect((await draftAnnotations(page))[0]).toEqual(resized);
+  });
+}
+test('edits note and canvas text in place, cancels edits, and restores edited content', async ({ page }) => {
+  await image(page); await addNote(page, 'Original feedback');
+  const original = (await draftPins(page))[0];
+  await page.getByRole('button', { name: 'Edit note 1', exact: true }).click();
+  await expect(page.locator('#annotation-text')).toHaveValue('Original feedback');
+  await page.locator('#annotation-text').fill('Discard this');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  expect((await draftPins(page))[0]).toEqual(original);
+  await page.getByRole('button', { name: 'Edit note 1', exact: true }).click();
+  await page.locator('#annotation-text').fill('Revised feedback\nKeep the silhouette.');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  expect(await draftPins(page)).toEqual([{ ...original, text: 'Revised feedback\nKeep the silhouette.' }]);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  expect((await draftPins(page))[0]).toEqual(original);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await page.getByRole('button', { name: 'Text', exact: true }).click();
+  await page.locator('#stage').click({ position: { x: 250, y: 150 } });
+  await page.locator('#annotation-text').fill('Before');
+  await page.getByRole('button', { name: 'Add to image' }).click();
+  const before = (await draftAnnotations(page))[1];
+  const stage = (await page.locator('#stage').boundingBox())!, scale = stage.width / 1000;
+  await page.keyboard.press('v');
+  await page.mouse.dblclick(stage.x + (before.points[0].x + 10) * scale, stage.y + (before.points[0].y + 10) * scale);
+  await expect(page.locator('#annotation-text')).toHaveValue('Before');
+  await page.locator('#annotation-text').fill('After');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  expect((await draftAnnotations(page))[1]).toEqual({ ...before, text: 'After' });
+  await page.reload(); await expect(page.locator('#stage')).toBeVisible();
+  expect((await draftAnnotations(page)).map(item => item.text)).toEqual(['Revised feedback\nKeep the silhouette.', 'After']);
+});
+test('moves and resizes markers with one undo per gesture and persists geometry', async ({ page }) => {
+  await image(page); await addNote(page, 'Keep this note linked to its marker.');
+  await page.keyboard.press('v');
+  const original = (await draftPins(page))[0];
+  const stage = (await page.locator('#stage').boundingBox())!;
+  const scale = stage.width / 1000;
+  await page.mouse.move(stage.x + 120, stage.y + 120); await page.mouse.down();
+  await page.mouse.move(stage.x + 200, stage.y + 180, { steps: 10 }); await page.mouse.up();
+  const moved = (await draftPins(page))[0];
+  expect(moved.points[0].x).toBeCloseTo(original.points[0].x + 80 / scale, 0);
+  expect(moved.points[0].y).toBeCloseTo(original.points[0].y + 60 / scale, 0);
+  expect(moved.number).toBe(1); expect(moved.text).toBe(original.text);
+  const handle = (await page.locator('#pin-resize').boundingBox())!;
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2); await page.mouse.down();
+  await page.mouse.move(handle.x + handle.width / 2 + 20, handle.y + handle.height / 2 + 20, { steps: 10 }); await page.mouse.up();
+  const resized = (await draftPins(page))[0];
+  expect(resized.radius).toBeGreaterThan(14);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  expect((await draftPins(page))[0].radius).toBeUndefined();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  expect((await draftPins(page))[0].points).toEqual(original.points);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await expect(page.locator('#save-state')).toHaveText('Saved locally'); await page.reload();
+  await expect(page.locator('#stage')).toBeVisible();
+  expect((await draftPins(page))[0]).toEqual(resized);
+  await page.getByRole('button', { name: 'Select note 1', exact: true }).click();
+  await expect(page.locator('#pin-diameter-value')).toHaveText(`${resized.radius! * 2} px`);
+});
+test('resizes a selected marker with the slider and cancels a move without edits', async ({ page }) => {
+  await image(page); await addNote(page, 'Marker size test');
+  const original = (await draftPins(page))[0];
+  await page.locator('#pin-diameter').fill('80');
+  const resized = (await draftPins(page))[0]; expect(resized.radius).toBe(40);
+  const stage = (await page.locator('#stage').boundingBox())!;
+  await page.mouse.move(stage.x + 120, stage.y + 120); await page.mouse.down();
+  await page.mouse.move(stage.x + 230, stage.y + 220); await page.keyboard.press('Escape'); await page.mouse.up();
+  expect((await draftPins(page))[0].points).toEqual(original.points);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  expect((await draftPins(page))[0].radius).toBeUndefined();
+});
+test('copies a complete notes sheet directly while brand fonts are offline', async ({ page, context }) => {
+  await page.route('https://use.typekit.net/**', route => route.abort());
+  await page.reload();
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await image(page); await addNote(page, 'Lift the contrast around this edge.');
+  await page.locator('#copy-sheet').click();
+  await expect(page.getByRole('status')).toContainText('Notes sheet copied');
+  await expect(page.locator('#sheet-dialog')).not.toBeVisible();
+  const dimensions = await page.evaluate(async () => {
+    const items = await navigator.clipboard.read();
+    const blob = await items[0].getType('image/png');
+    const bitmap = await createImageBitmap(blob);
+    const result = [bitmap.width, bitmap.height]; bitmap.close(); return result;
+  });
+  expect(dimensions).toEqual([1500, 700]);
+  await expect(page.locator('#copy-sheet')).toBeEnabled();
+});
+test('exports a sheet containing image pixels, moved markers and every wrapped numbered note', async ({ page }, testInfo) => {
+  await image(page); await addNote(page, 'First note: make the edge clearer.\nKeep the existing color.');
+  await addNote(page, 'Second note: ' + 'A long explanation with detail. '.repeat(40), 240, 180);
+  await page.getByRole('button', { name: 'Select note 1', exact: true }).click();
+  await page.locator('#pin-diameter').fill('80');
+  const pin = (await draftPins(page))[0];
+  const box = (await page.locator('#stage').boundingBox())!, scale = box.width / 1000;
+  await page.mouse.move(box.x + pin.points[0].x * scale, box.y + pin.points[0].y * scale); await page.mouse.down();
+  await page.mouse.move(box.x + (pin.points[0].x + 100) * scale, box.y + (pin.points[0].y + 100) * scale, { steps: 8 }); await page.mouse.up();
+  const movedPin = (await draftPins(page))[0];
+  // Record canvas text while still checking the actual exported PNG pixels below.
+  await page.evaluate(() => {
+    const original = CanvasRenderingContext2D.prototype.fillText;
+    (window as any).sheetText = [];
+    CanvasRenderingContext2D.prototype.fillText = function(text, ...args: [number, number, number?]) {
+      (window as any).sheetText.push(text); return original.call(this, text, ...args);
+    };
+  });
+  await page.getByRole('button', { name: 'Export notes sheet' }).click();
+  await expect(page.locator('#sheet-dialog')).toBeVisible();
+  await expect(page.locator('#sheet-save')).toBeEnabled();
+  const drawn: string[] = await page.evaluate(() => (window as any).sheetText);
+  expect(drawn).toContain('1'); expect(drawn).toContain('2');
+  expect(drawn.join(' ')).not.toMatch(/ORCHID|SNAPBACK|FEEDBACK NOTES|numbered notes/);
+  const merged = drawn.join(' ').replace(/\s/g, '');
+  expect(merged).toContain('First note: make the edge clearer.'.replace(/\s/g, ''));
+  expect(merged).toContain(('Second note: ' + 'A long explanation with detail. '.repeat(40)).replace(/\s/g, ''));
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Save notes sheet PNG' }).click();
+  const download = await downloadPromise; expect(download.suggestedFilename()).toBe('artist-review-notes-sheet.png');
+  const path = testInfo.outputPath('notes-sheet.png'); await download.saveAs(path);
+  const pixels = await page.locator('#sheet-preview').evaluate(async (img: HTMLImageElement, pin: { x: number; y: number }) => {
+    await img.decode(); const canvas = document.createElement('canvas'); canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d')!; ctx.drawImage(img, 0, 0);
+    const pixel = (x: number, y: number) => Array.from(ctx.getImageData(x, y, 1, 1).data);
+    const markerArea = ctx.getImageData(Math.floor(pin.x - 43), Math.floor(pin.y - 43), 86, 86).data;
+    let whitePixels = 0;
+    for (let i = 0; i < markerArea.length; i += 4) if (markerArea[i] > 250 && markerArea[i + 1] > 250 && markerArea[i + 2] > 250) whitePixels++;
+    const panel = ctx.getImageData(1080, 32, 368, canvas.height - 32).data;
+    let lightPixels = 0; for (let i = 0; i < panel.length; i += 4) if (panel[i] > 200 && panel[i + 1] > 200 && panel[i + 2] > 200) lightPixels++;
+    return { width: canvas.width, height: canvas.height, image: pixel(10, 10), background: pixel(1490, 10), marker: pixel(pin.x + 24, pin.y + 12), corner: pixel(pin.x + 36, pin.y + 36), lightPixels, whitePixels };
+  }, movedPin.points[0]);
+  expect(pixels.marker).toEqual([255, 120, 90, 255]);
+  expect(pixels.width).toBe(1500); expect(pixels.height).toBeGreaterThan(700);
+  expect(pixels.image).toEqual([218, 229, 220, 255]); expect(pixels.background).toEqual([28, 28, 28, 255]);
+  expect(pixels.corner).toEqual([255, 120, 90, 255]);
+  expect(pixels.whitePixels).toBe(0);
+  expect(pixels.lightPixels).toBeGreaterThan(1000);
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.locator('#image-info')).toHaveText('1,000 × 700 px');
+  await page.setViewportSize({ width: 900, height: 600 });
+  await page.getByRole('button', { name: 'Export notes sheet' }).click();
+  await expect(page.locator('#sheet-save')).toBeEnabled();
+});
