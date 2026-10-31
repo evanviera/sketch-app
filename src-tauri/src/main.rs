@@ -4,7 +4,7 @@ use image::{ImageEncoder, ImageReader};
 use std::{borrow::Cow, io::Cursor};
 mod menu;
 use tauri::ipc::{InvokeBody, Request, Response};
-use tauri::Emitter;
+use tauri::{AppHandle, Emitter};
 
 const MAX_BYTES: usize = 80 * 1024 * 1024;
 const MAX_PIXELS: u64 = 40_000_000;
@@ -158,8 +158,15 @@ async fn copy_text(text: String) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 
+// Relaunch after the updater has installed a new version.
+#[tauri::command]
+fn restart_app(app: AppHandle) {
+    app.restart();
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .menu(menu::build)
         .on_menu_event(|app, event| {
             let _ = app.emit("menu-action", event.id().as_ref());
@@ -170,6 +177,7 @@ fn main() {
             copy_image,
             save_image,
             copy_text,
+            restart_app,
             menu::sync_menu
         ])
         .run(tauri::generate_context!())

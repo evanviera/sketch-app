@@ -4,14 +4,14 @@ A local desktop image-feedback tool for artists, rebuilt with **Tauri 2 + Rust**
 
 ## Run
 
-Requires Node.js 22.12+ (or current LTS), Rust stable, and the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/). macOS is the primary build target.
+Requires Node.js 22.12+ (or current LTS), Rust stable, and the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/). Releases ship for macOS and Windows.
 
 ```sh
 npm ci
 npm start
 ```
 
-`npm run dev` runs a browser preview. `npm run dist` builds the macOS application and DMG; `npm run dist -- --bundles app` builds only the application. Build artifacts are in `src-tauri/target/release/bundle/`.
+`npm run dev` runs a browser preview. `npm run dist` builds unsigned installers for the current platform (a DMG on macOS, MSI and setup EXE on Windows); `npm run dist -- --bundles app` builds only the macOS application. Build artifacts are in `src-tauri/target/release/bundle/`.
 
 ## Included
 
@@ -38,6 +38,38 @@ Snapback shares one look with Limn: ink chrome, a neutral charcoal canvas, sente
 The app icon uses the approved **Markup** design: a light pencil with a blue tip and framing corners on a dark rounded tile. Its master, generation prompt, and regeneration command are in `assets/app-icon/`. Tauri's native icons and the browser-preview favicon are generated from this master.
 
 Numbered markers are solid squares without white outlines, both on the canvas and in exported images.
+
+## Releases and updates
+
+Snapback releases the same way as every Forme app; the shared checklist is in
+[forme-website/docs/release-standard.md](https://github.com/evanviera/forme-website/blob/main/docs/release-standard.md).
+
+1. Bump every version field and merge it to `main`:
+
+   ```sh
+   npm run release:version -- 0.3.0
+   git commit -am "Prepare v0.3.0 release"
+   ```
+
+2. Run the **Release** workflow from the Actions tab with version `0.3.0` (or push tag `v0.3.0`).
+   It builds a signed, notarized macOS DMG and a Windows installer into a draft release, then
+   publishes the release once both platforms have uploaded.
+
+The app checks for updates at launch and from **Help > Check for Updates…**. It asks
+`forme.md/update/snapback/...` first, which adds 1 to an anonymous daily count and redirects to
+GitHub's `latest.json`; GitHub is the fallback endpoint. Updates are verified with the Tauri
+updater key shared by all Forme apps. Installing an update saves the open review first, then
+relaunches.
+
+forme.md's download buttons (`/download/snapback/mac`, `/download/snapback/windows`) redirect to
+the latest release's `.dmg` and `-setup.exe`.
+
+The Release workflow needs these repository secrets, the same values Limn uses:
+`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`,
+`KEYCHAIN_PASSWORD`, `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+
+`npm run dist:release` builds signed updater artifacts locally when the `TAURI_SIGNING_*`
+variables are set.
 
 ## Keyboard shortcuts
 
