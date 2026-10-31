@@ -195,7 +195,7 @@ function updateSelection() {
       };
       handle.style.left = `${offset.x + point.x * zoom}px`; handle.style.top = `${offset.y + point.y * zoom}px`;
     }
-    el('object-kind').textContent = pin.type === 'rectangle' ? 'BOX' : pin.type.toUpperCase();
+    el('object-kind').textContent = pin.type === 'rectangle' ? 'Box' : pin.type.charAt(0).toUpperCase() + pin.type.slice(1);
     el('edit-text').hidden = pin.type !== 'text';
     el('object-hint').textContent = pin.type === 'arrow' ? 'Drag the arrow to move it. Drag either endpoint to resize or redirect it.' : 'Drag to move. Drag a corner to resize.';
     return;
