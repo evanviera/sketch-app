@@ -70,6 +70,7 @@
     </aside>
   </main>
   <div id="toast" role="status" aria-live="polite" hidden></div>
+  <div id="update-bar" role="status" aria-live="polite" hidden><span data-update-message></span><button data-update-later>Later</button><button data-update-install class="primary">Install and restart</button></div>
   <dialog id="text-dialog"><form id="text-form"><h2 id="text-title">Add a note</h2><textarea id="annotation-text" rows="4" maxlength="2000" placeholder="What should change, and why?" required></textarea><div class="dialog-actions"><button type="button" id="text-cancel">Cancel</button><button id="text-submit" type="submit" class="primary">Add to image ↗</button></div></form></dialog>
   <dialog id="sheet-dialog"><h2>Notes sheet</h2><p id="sheet-info"></p><p id="sheet-status" role="status" aria-live="polite"></p><div class="sheet-preview"><img id="sheet-preview" alt="Annotated image and all numbered feedback notes"></div><div class="dialog-actions"><button id="sheet-close">Close</button><button id="sheet-save" disabled>Save notes sheet PNG</button><button id="sheet-copy" class="primary" disabled>Copy notes sheet ↗</button></div></dialog>
   <dialog id="replace-dialog"><h2>Start a new review?</h2><p>The current image and its annotations will be replaced.<br>Copy or export your feedback first if you need it.</p><div class="dialog-actions"><button id="replace-cancel">Keep reviewing</button><button id="replace-confirm" class="primary">Open new image</button></div></dialog>

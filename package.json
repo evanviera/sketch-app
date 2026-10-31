@@ -9,13 +9,16 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "start": "tauri dev",
-    "dist": "tauri build",
+    "dist": "tauri build --config src-tauri/tauri.local.conf.json",
     "test": "vitest run tests/model.test.ts",
     "test:e2e": "playwright test",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "dist:release": "tauri build",
+    "release:version": "node scripts/release-version.mjs"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.0.0"
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-updater": "^2.14.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",

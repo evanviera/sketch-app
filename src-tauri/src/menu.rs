@@ -117,11 +117,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         app,
         "Help",
         true,
-        &[&item(
-            "help",
-            "Keyboard Shortcuts",
-            Some("CmdOrCtrl+Slash"),
-        )?],
+        &[
+            &item("help", "Keyboard Shortcuts", Some("CmdOrCtrl+Slash"))?,
+            &Native::separator(app)?,
+            &item("check-updates", "Check for Updates…", None)?,
+        ],
     )?)?;
     Ok(menu)
 }

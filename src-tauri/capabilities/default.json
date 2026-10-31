@@ -1,7 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "Local annotation window; no shell or arbitrary filesystem access.",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "description": "Local annotation window; no shell or arbitrary filesystem access. The updater only talks to the signed release feed.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "updater:default"
+  ]
 }

@@ -7,6 +7,7 @@ import { loadDraft, saveDraft } from './storage';
 import { native, openNative, pasteImage, copyImage, exportImage, copyText } from './native';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { checkForUpdates } from './updater';
 
 function el<T extends HTMLElement = HTMLElement>(id: string) { return document.getElementById(id) as T; }
 const viewport = el('viewport'), stage = el('stage');
@@ -47,7 +48,7 @@ function syncMenu() {
       undo: editing || (image && history.canUndo), redo: editing || (image && history.canRedo),
       delete: image && !!selected && !editing && !comparing,
       'edit-text': image && !!selected && ['text', 'pin'].includes(selected.type),
-      fit: image, 'actual-size': image, 'zoom-in': image, 'zoom-out': image, original: image, help: !modal,
+      fit: image, 'actual-size': image, 'zoom-in': image, 'zoom-out': image, original: image, help: !modal, 'check-updates': !modal,
     };
     for (const name of Object.keys(toolInfo)) states[`tool-${name}`] = available;
     const snapshot = JSON.stringify(states);
@@ -589,6 +590,7 @@ async function init() {
   if (native) await listen<string>('menu-action', event => void run(async () => {
     const action = event.payload;
     if (editingText() && ['undo', 'redo'].includes(action)) { document.execCommand(action); return; }
+    if (action === 'check-updates') { await updates(true); return; }
     if (document.querySelector('dialog[open]') || !ready || loading || busy) return;
     if (action.startsWith('tool-')) {
       const next = action.slice(5) as Tool; if (next in toolInfo) setTool(next); return;
@@ -618,6 +620,11 @@ async function init() {
   try { const draft = await loadDraft(); if (draft) await loadImage(draft.image, draft.name, draft.annotations, true); }
   catch { toast('The previous draft could not be restored. You can open a new image.', true); }
   finally { ready = true; for (const id of ['open', 'empty-open', 'paste']) el<HTMLButtonElement>(id).disabled = false; syncMenu(); }
+  void updates(false);
+}
+// Save the open review before relaunching into a new version, so nothing is lost.
+function updates(manual: boolean) {
+  return checkForUpdates({ manual, notify: toast, beforeRestart: async () => { persist(); await saving; } });
 }
 document.addEventListener('focusin', syncMenu);
 document.addEventListener('focusout', syncMenu);
