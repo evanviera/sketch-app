@@ -17,9 +17,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &Native::about(
                 app,
-                Some("About Orchid Snapback"),
+                Some("About Snapback"),
                 Some(AboutMetadata {
-                    name: Some("Orchid Snapback".into()),
+                    name: Some("Snapback".into()),
                     version: Some(env!("CARGO_PKG_VERSION").into()),
                     comments: Some("Image feedback for artists".into()),
                     ..Default::default()

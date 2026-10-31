@@ -31,11 +31,11 @@ npm start
 - Automatic local recovery of the most recent image and its editable annotation data using IndexedDB.
 - Confirmation before replacing an image with annotations. Invalid input leaves the current review intact.
 
-Nothing uploads images or automatically sends messages. Paste the copied result into the conversation with the artist. The editor and logo work offline; the shared Orchid Adobe font kit loads asynchronously with local font fallbacks.
+Nothing uploads images or automatically sends messages. Paste the copied result into the conversation with the artist. The editor works offline; Proxima Nova loads asynchronously from the shared web font kit, with system font fallbacks.
 
-The approved Studio Dark identity follows the sibling Orchid clients, payroll, and website repos: black chrome, a neutral charcoal canvas, orange actions, Proxima Nova body text, and DIN Condensed headings. The logo is bundled locally; the Adobe kit uses the same `sbo7krv` stylesheet as those apps. Image markup colors remain independent of the interface accent.
+Snapback shares one look with Limn: ink chrome, a neutral charcoal canvas, sentence-case labels, Proxima Nova, and one rare cool-blue accent (`#3b8cff`) with ink text on it. The app never shows a studio name or logo. Image markup colors remain independent of the interface accent.
 
-The app icon uses the approved **Markup** design: a light pencil and framing corners on a dark rounded tile. Its master, generation prompt, and regeneration command are in `assets/app-icon/`. Tauri's native icons and the browser-preview favicon are generated from this master.
+The app icon uses the approved **Markup** design: a light pencil with a blue tip and framing corners on a dark rounded tile. Its master, generation prompt, and regeneration command are in `assets/app-icon/`. Tauri's native icons and the browser-preview favicon are generated from this master.
 
 Numbered markers are solid squares without white outlines, both on the canvas and in exported images.
 

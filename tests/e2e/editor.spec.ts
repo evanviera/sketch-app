@@ -124,7 +124,7 @@ test('selects the topmost mixed annotation, deletes with either key, and never d
   await page.keyboard.press('v');
   const stage = (await page.locator('#stage').boundingBox())!;
   await page.locator('#stage').click({ position: { x: stage.width * .42, y: stage.height * .45 } });
-  await expect(page.locator('#object-kind')).toHaveText('BOX');
+  await expect(page.locator('#object-kind')).toHaveText('Box');
   await page.keyboard.press('Delete');
   expect(await draftAnnotations(page)).toEqual([original[0]]);
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
@@ -133,7 +133,7 @@ test('selects the topmost mixed annotation, deletes with either key, and never d
   await page.keyboard.press('Backspace');
   expect(await draftAnnotations(page)).toEqual([original[0]]);
   await page.locator('#stage').click({ position: { x: stage.width * .425, y: stage.height * .45 } });
-  await expect(page.locator('#object-kind')).toHaveText('ARROW');
+  await expect(page.locator('#object-kind')).toHaveText('Arrow');
   await page.getByRole('button', { name: 'Delete annotation', exact: false }).filter({ visible: true }).click();
   expect(await draftAnnotations(page)).toHaveLength(0);
   await page.locator('#stage').click({ position: { x: 40, y: 40 } });
@@ -147,7 +147,7 @@ test('selects and resizes a pen dot and ignores Delete while editing feedback te
   await page.locator('#stage').click({ position: { x: 100, y: 100 } });
   await page.keyboard.press('v');
   await page.locator('#stage').click({ position: { x: 100, y: 100 } });
-  await expect(page.locator('#object-kind')).toHaveText('PEN');
+  await expect(page.locator('#object-kind')).toHaveText('Pen');
   const handle = (await page.getByRole('button', { name: 'Resize bottom right', exact: true }).boundingBox())!;
   await page.mouse.move(handle.x + 6, handle.y + 6); await page.mouse.down();
   await page.mouse.move(handle.x + 30, handle.y + 30); await page.mouse.up();

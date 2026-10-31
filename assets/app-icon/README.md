@@ -1,6 +1,6 @@
 # Snapback app icon
 
-Approved direction: **2 — Markup**, a light pencil with framing corners on a dark rounded tile. This is the app identity; the Orchid wordmark in the editor remains the studio identity.
+Approved direction: **2 — Markup**, a light pencil with framing corners on a dark rounded tile. The pencil tip is the shared accent blue (`#3b8cff`), recolored from the original master. This is the app's only identity mark; the app shows no studio branding.
 
 `markup.png` is the production master. Native sizes are generated with:
 
