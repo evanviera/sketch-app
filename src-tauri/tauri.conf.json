@@ -41,7 +41,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVGNTYxQjVCNjhEMjEzQTMKUldTakU5Sm9XeHRXWDRrVEUrSVdTdjRYOFEvZmNXeXlONkdvL096Q0FVQ21OVWVVeTVFY3I5TEsK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk2MzkyRTU5NkY5ODQzNTkKUldSWlE1aHZXUzQ1bHIxQll3QmJ0bVFuaVBRVU51TWhCcHk4a250aHVkQjNWVnRETndobzBHREwK",
       "endpoints": [
         "https://forme.md/update/snapback/{{target}}/{{arch}}/{{current_version}}",
         "https://github.com/evanviera/sketch-app/releases/latest/download/latest.json"
