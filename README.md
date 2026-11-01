@@ -2,6 +2,8 @@
 
 A local desktop image-feedback tool for artists, rebuilt with **Tauri 2 + Rust** and a small TypeScript canvas editor. Open an image, mark it up, and copy the result into your conversation.
 
+Snapback is part of [Forme](https://forme.md). Its look follows the shared brand in [evanviera/forme-brand](https://github.com/evanviera/forme-brand).
+
 ## Run
 
 Requires Node.js 22.12+ (or current LTS), Rust stable, and the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/). Releases ship for macOS and Windows.
@@ -114,6 +116,10 @@ npm run test:e2e
 Unit tests cover history branching and bounds, arrow geometry, fit, and pin numbering. Browser tests cover drawing, undo/redo, resize integrity, safe note rendering, recovery, replacement protection, invalid input, pixel inspection, full-resolution export with visible annotation pixels, marker drag/resize/undo/recovery, and notes-sheet text completeness and exported marker pixels. Rust tests cover input limits and RGBA/PNG roundtrip preservation.
 
 Verified on macOS during this rebuild: 13 model/layout tests, 19 browser workflow tests, 2 Rust tests, clean Clippy checks, and the release app's native open → draw → copy → paste → save flow. The native smoke export retained its 1024 × 1024 dimensions. The app bundle measured 5.74 MiB, with about 33.1 KB of production JavaScript before gzip. These are build measurements, not frame-rate or startup benchmarks.
+
+## Branding
+
+Branding follows **[evanviera/forme-brand](https://github.com/evanviera/forme-brand)**, the single source of truth for the Forme suite. Don't invent colors, fonts or UI patterns here; change forme-brand first, then copy the change in. `src/styles.css` uses only greys from the brand's neutral ramp; annotation colors are user content and are marked `brand-ignore`. Before finishing visual work, run `node scripts/check.mjs ../sketch-app` from a forme-brand checkout.
 
 ## Next features worth adding
 
