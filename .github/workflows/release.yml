@@ -103,5 +103,15 @@ jobs:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Installed copies reject updates signed with any key but the one in
+      # tauri.conf.json, so stop here (the release stays a draft) on a mismatch.
+      - name: Check updater signatures match the app's public key
+        run: |
+          gh release download "$RELEASE_TAG" --repo "${{ github.repository }}" --pattern "*.sig" --dir sigs
+          python3 scripts/check-updater-signatures.py sigs/*.sig
+
       - name: Publish the draft once macOS and Windows assets are uploaded
         run: gh release edit "$RELEASE_TAG" --repo "${{ github.repository }}" --draft=false --latest
